@@ -16,9 +16,6 @@ Connor Hewitt
 
 Hit the moving targets to score points. The score is shown in the top-left corner.
 
-## Diagram
-
-![Pattern diagram](Pattern_Diagram.png)
 
 *(Export the slide from `Pattern_Diagram.pptx` as a PNG and place it in the repo root.)*
 
