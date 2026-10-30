@@ -4,15 +4,15 @@ public class Target : MonoBehaviour
 {
     public int Points { get; set; }
     public float Speed { get; set; }
-    private float direction = 1f;
+    public float Direction { get; set; } = 1f;   // now public so it can be saved
 
     void Update()
     {
-        transform.Translate(Vector3.right * direction * Speed * Time.deltaTime);
+        transform.Translate(Vector3.right * Direction * Speed * Time.deltaTime);
 
         // bounce at the edges
-        if (transform.position.x > 8f) direction = -1f;
-        else if (transform.position.x < -8f) direction = 1f;
+        if (transform.position.x > 8f) Direction = -1f;
+        else if (transform.position.x < -8f) Direction = 1f;
     }
 
     public void Hit()
