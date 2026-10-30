@@ -1,94 +1,103 @@
-# Carnival Target Shooting
+# Carnival Target Shooting: Save & Load
 
-A simple 2D Unity game prototype that demonstrates the **Object Pool**, **Builder**, and **Observer** design patterns. The player controls a shooter at the bottom of the screen and fires bullets at moving carnival targets. Each target is worth a different number of points.
+A 2D Unity game where the player shoots moving carnival targets. This version adds a **Save & Load** system. Press **S** to save the game and **L** to load it back.
 
 ## Group Members
 
-Connor Hewitt
+- Connor Hewitt
 
-## How to Play
+
+## Controls
 
 | Key | Action |
 |---|---|
 | **A / Left Arrow** | Move left |
 | **D / Right Arrow** | Move right |
 | **Space** | Shoot |
+| **S** | Save the game |
+| **L** | Load the saved game |
 
-Hit the moving targets to score points. The score is shown in the top-left corner.
+## What Gets Saved
 
+| Data | File | Format |
+|---|---|---|
+| Score | `score.dat` | Binary |
+| Player position and every target on screen (position, speed, size, points, color, direction) | `positions.json` | JSON |
 
-*(Export the slide from `Pattern_Diagram.pptx` as a PNG and place it in the repo root.)*
+Bullet positions are not saved, as the assignment allows.
 
-## Design Patterns
+Both files are written to Unity's `Application.persistentDataPath`. The path is printed in the Console each time you save. On Windows it is under `C:\Users\<name>\AppData\LocalLow\<CompanyName>\<ProjectName>`.
 
-### 1. Object Pool Pattern (Bullets)
+## How It Works
 
-**Classes:** `BulletPool`, `Bullet`, `Shooter`
+### ISaveable (interface)
 
-**What it does:** Instead of creating a new bullet with `Instantiate()` and removing it with `Destroy()` every time the player shoots, the game creates 20 bullets once when it starts and reuses them.
+```csharp
+public interface ISaveable
+{
+    void Save();
+    void Load();
+}
+```
 
-**How it works:**
-- `BulletPool` creates the bullets in `Awake()`, turns them off, and stores them in a `Queue<Bullet>`.
-- When the player presses Space, `Shooter` calls `BulletPool.Get()`. The pool takes an inactive bullet from the queue, moves it to the shooter's position, and turns it on.
-- When a bullet hits a target or its lifetime runs out, it calls `BulletPool.Return()`. The pool turns the bullet off and puts it back in the queue.
-- If the queue is ever empty, the pool creates one more bullet, so the player can never run out.
+Anything that can be saved implements this interface. Because of it, the `SaveManager` does not need to know what each object saves or what format it uses. It only calls `Save()` or `Load()`.
 
-**Why it fits:** Bullets are created and removed constantly. Reusing them avoids repeated memory allocation and garbage collection, which keeps the game running smoothly. You can see it working by watching the children of the `BulletPool` object in the Hierarchy turn on and off while the game is running.
+### SaveManager
 
-### 2. Builder Pattern (Targets)
+`SaveManager` listens for the **S** and **L** keys. It keeps a `List<ISaveable>` containing the `ScoreManager` and the `TransformSaver`. When S is pressed, it calls `Save()` on every item in the list. When L is pressed, it calls `Load()` on every item.
 
-**Classes:** `TargetBuilder`, `TargetDirector`, `TargetSpawner`, `Target`
+### ScoreManager (binary file)
 
-**What it does:** Targets are built one step at a time using a builder, so each target type can have its own speed, size, color, and point value.
+`ScoreManager` already acted as the Observer for scoring. It now also implements `ISaveable`.
+- **Save:** opens `score.dat` with a `BinaryWriter` and writes the score as a single integer.
+- **Load:** reads the integer back with a `BinaryReader`, sets the score, and refreshes the on-screen text.
 
-**How it works:**
-- `TargetBuilder` has a method for each attribute: `SetSpeed()`, `SetSize()`, `SetPoints()`, and `SetColor()`. Each one returns the builder so the calls can be chained. `Build()` then creates the target from the prefab and applies all the values.
-- `TargetDirector` holds the premade target recipes. Each recipe is a different chain of builder calls:
+### TransformSaver (JSON file)
 
-| Target | Speed | Size | Points | Color |
-|---|---|---|---|---|
-| Duck | 2 | 1.0 | 10 | Yellow |
-| Rabbit | 5 | 0.6 | 30 | Cyan |
-| Bear | 1 | 1.6 | 5 | Red |
+`TransformSaver` implements `ISaveable` and handles all locations.
+- **Save:** collects the player's position and finds every `Target` in the scene. For each target it records position, speed, size, points, color, and direction. All of this goes into a `TransformSaveData` object, which `JsonUtility.ToJson()` converts to text and writes to `positions.json`.
+- **Load:** reads the JSON back with `JsonUtility.FromJson()`, moves the player to the saved position, destroys the targets currently in the scene, and rebuilds each saved target.
 
-- `TargetSpawner` randomly picks one of the director's recipes every 1.5 seconds and places the new target in the scene.
+### Builder pattern reused for loading
 
-**Why it fits:** A target has several settings that change from type to type. The builder keeps that construction code in one place, so adding a new target type only means adding one new recipe in `TargetDirector`.
+Targets are not placed in the scene by hand, so loading cannot simply move existing objects. Instead, `TransformSaver` rebuilds each saved target with the same `TargetBuilder` used by the spawner, which restores the correct speed, size, points, and color. It then sets the saved position and direction.
 
-### 3. Observer Pattern (Score)
+### Example `positions.json`
 
-**Classes:** `IScoreObserver`, `TargetEvents`, `ScoreManager`, `Target`
+```json
+{
+    "playerPosition": { "x": 1.5, "y": -4.0, "z": 0.0 },
+    "targets": [
+        {
+            "position": { "x": -3.2, "y": 2.1, "z": 0.0 },
+            "speed": 5.0,
+            "size": 0.6,
+            "points": 30,
+            "direction": -1.0,
+            "color": { "r": 0.0, "g": 1.0, "b": 1.0, "a": 1.0 }
+        }
+    ]
+}
+```
 
-**What it does:** When a target is hit, the score updates automatically. The target does not need to know anything about the score or the UI.
+## Design Patterns from Last Week
 
-**How it works:**
-- `IScoreObserver` is an interface with one method, `OnTargetHit(Target target)`.
-- `TargetEvents` is the **subject**. It keeps a list of observers and has `Attach()`, `Detach()`, and `Notify()` methods.
-- `ScoreManager` is the **observer**. It implements `IScoreObserver`, attaches itself in `OnEnable()`, and detaches in `OnDisable()`. When notified, it adds the target's points to the score and updates the on-screen text.
-- When a bullet hits a target, `Target.Hit()` calls `TargetEvents.Notify(this)` and then destroys itself.
-
-**Why it fits:** The target only announces that it was hit. Other systems, such as a score display, a sound effect, or a combo counter, can be added later by attaching more observers without changing the `Target` class.
+- **Object Pool:** `BulletPool` and `Bullet` reuse bullets instead of creating and destroying them.
+- **Builder:** `TargetBuilder` and `TargetDirector` create the different target types.
+- **Observer:** `TargetEvents` notifies `ScoreManager` when a target is hit.
 
 ## Project Structure
 
 ```
-Assets/
-  Scripts/
-    Bullet.cs            (Object Pool)
-    BulletPool.cs        (Object Pool)
-    Shooter.cs           (player controls)
-    Target.cs            (Builder product / Observer notifier)
-    TargetBuilder.cs     (Builder)
-    TargetDirector.cs    (Builder, premade types)
-    TargetSpawner.cs     (spawns targets)
-    IScoreObserver.cs    (Observer interface)
-    TargetEvents.cs      (Observer subject)
-    ScoreManager.cs      (Observer)
-  Prefabs/
-    Bullet.prefab
-    Target.prefab
-  Scenes/
-    SampleScene.unity
+Assets/Scripts/
+  ISaveable.cs         (save/load interface)
+  SaveManager.cs       (listens for S and L)
+  SaveData.cs          (data classes turned into JSON)
+  TransformSaver.cs    (saves positions to JSON)
+  ScoreManager.cs      (observer + saves score to binary)
+  Target.cs, TargetBuilder.cs, TargetDirector.cs, TargetSpawner.cs
+  Bullet.cs, BulletPool.cs, Shooter.cs
+  IScoreObserver.cs, TargetEvents.cs
 ```
 
 ## Requirements
